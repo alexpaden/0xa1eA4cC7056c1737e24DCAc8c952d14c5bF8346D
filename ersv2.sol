@@ -48,6 +48,11 @@ contract Reputation is Ownable {
         emit MaxReputationSet(_maxReputation);
     }
 
+    function setNftMaxReputation(address nftContractAddress, int _nftMaxReputation) public onlyOwner {
+    nftMaxReputation[nftContractAddress] = _nftMaxReputation;
+    }
+
+
     function setOwnerPercent(uint _ownerPercent) public onlyOwner {
         require(_ownerPercent <= 100, "Owner percent cannot exceed 100");
         ownerPercent = _ownerPercent;
