@@ -30,7 +30,7 @@ contract Reputation is Ownable {
     event ProfitShared(address indexed receiver, uint amount);
     event ProfitsWithdrawn(address indexed receiver, uint amount);
     event OwnerPercentSet(uint newOwnerPercent);
-
+    event MaxReputationChanged(int256 newMaxReputation);
 
     
     constructor() {
@@ -49,7 +49,8 @@ contract Reputation is Ownable {
     }
 
     function setNftMaxReputation(address nftContractAddress, int _nftMaxReputation) public onlyOwner {
-    nftMaxReputation[nftContractAddress] = _nftMaxReputation;
+        nftMaxReputation[nftContractAddress] = _nftMaxReputation;
+        emit MaxReputationChanged(_nftMaxReputation); // Emit the event with the new value
     }
 
 
@@ -124,12 +125,16 @@ contract Reputation is Ownable {
     // Input in wei
     function withdrawFunds(uint amountInWei) public onlyOwner {
         require(amountInWei <= ownerBalance, "Not enough balance in owner's share");
-        
-        payable(owner()).transfer(amountInWei);
+            
+        // Make state change before external call
         ownerBalance -= amountInWei;
-        
+
+        // External call
+        payable(owner()).transfer(amountInWei);
+            
         emit FundsWithdrawn(owner(), amountInWei);
     }
+
 
     // Allow users to withdraw their share of the profits
     function withdrawProfits() public {
