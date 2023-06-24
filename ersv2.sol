@@ -19,7 +19,7 @@ contract Reputation is Ownable {
     mapping(address => int) public nftMaxReputation;
     
     uint public reputationCost = 10000000000000000;  // Reputation cost is initially 0.01 ether (in wei)
-    uint public ownerBalance; // tracks the owner's share of the profits
+    uint public ownerBalance= 0; // tracks the owner's share of the profits
     uint public ownerPercent = 75; // tracks the percentage of profits that go to the owner, initially set to 75%
     int public maxReputation = 2;
 
@@ -29,6 +29,8 @@ contract Reputation is Ownable {
     event MaxReputationSet(int newMaxReputation);
     event ProfitShared(address indexed receiver, uint amount);
     event ProfitsWithdrawn(address indexed receiver, uint amount);
+    event OwnerPercentSet(uint newOwnerPercent);
+
 
     
     constructor() {
@@ -49,6 +51,7 @@ contract Reputation is Ownable {
     function setOwnerPercent(uint _ownerPercent) public onlyOwner {
         require(_ownerPercent <= 100, "Owner percent cannot exceed 100");
         ownerPercent = _ownerPercent;
+        emit OwnerPercentSet(_ownerPercent);
     }
 
     // Store balances in wei for precision
@@ -79,7 +82,8 @@ contract Reputation is Ownable {
         require(balances[msg.sender] >= reputationCost, "Not enough funds");
         balances[msg.sender] -= reputationCost;
 
-        uint ownerShare = (reputationCost * ownerPercent) / 100;
+        uint reputationCostScaled = reputationCost * 100;
+        uint ownerShare = (reputationCostScaled * ownerPercent) / 10000;
         ownerBalance += ownerShare;
         profits[receiver] += reputationCost - ownerShare;
 
