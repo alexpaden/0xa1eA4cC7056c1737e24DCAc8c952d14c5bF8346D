@@ -18,10 +18,12 @@ contract Reputation is Ownable {
     mapping(address => uint) public profits; // tracks accumulated profits for each address
     mapping(address => int) public nftMaxReputation;
     
+
     uint public reputationCost = 10000000000000000;  // Reputation cost is initially 0.01 ether (in wei)
     uint public ownerBalance= 0; // tracks the owner's share of the profits
     uint public ownerPercent = 75; // tracks the percentage of profits that go to the owner, initially set to 75%
     int public maxReputation = 2;
+
 
     event ReputationSet(address indexed sender, address indexed receiver, int reputation, string comment, uint timestamp);
     event FundsWithdrawn(address owner, uint amount);
@@ -31,6 +33,7 @@ contract Reputation is Ownable {
     event ProfitsWithdrawn(address indexed receiver, uint amount);
     event OwnerPercentSet(uint newOwnerPercent);
     event MaxReputationChanged(int256 newMaxReputation);
+    
 
     
     constructor() {
@@ -38,17 +41,23 @@ contract Reputation is Ownable {
         transferOwnership(msg.sender);
     }
 
+
     function setReputationCost(uint _reputationCost) public onlyOwner {
+        require(_reputationCost > 0, "Reputation cost cannot be zero");
         reputationCost = _reputationCost;
         emit ReputationCostSet(_reputationCost);
     }
 
+
     function setMaxReputation(int _maxReputation) public onlyOwner {
+        require(_maxReputation > 0, "Max reputation cannot be zero");
         maxReputation = _maxReputation;
         emit MaxReputationSet(_maxReputation);
     }
 
+
     function setNftMaxReputation(address nftContractAddress, int _nftMaxReputation) public onlyOwner {
+        require(_nftMaxReputation > 0, "Max NFT reputation cannot be zero");
         nftMaxReputation[nftContractAddress] = _nftMaxReputation;
         emit MaxReputationChanged(_nftMaxReputation); // Emit the event with the new value
     }
@@ -60,23 +69,27 @@ contract Reputation is Ownable {
         emit OwnerPercentSet(_ownerPercent);
     }
 
+
     // Store balances in wei for precision
     function deposit() public payable {
         balances[msg.sender] += msg.value;
     }
+
 
     function setReputation(address receiver, int reputation, string memory comment, address nftContractAddress, uint tokenId) public {
         int currentMaxReputation = getMaxReputation(nftContractAddress, tokenId);
         setReputationInternal(receiver, reputation, comment, currentMaxReputation);
     }
 
+
     function setReputation(address receiver, int reputation, string memory comment) public {
         setReputationInternal(receiver, reputation, comment, maxReputation);
     }
 
+
     function setReputationInternal(address receiver, int reputation, string memory comment, int currentMaxReputation) internal {
-        // Check that the length of the string or hash is no more than 320 characters
         require(bytes(comment).length <= 320, "Comment string is too long");
+        require(bytes(comment).length > 0, "Comment cannot be empty");
 
         // Ensure the reputation is within bounds
         if (reputation > currentMaxReputation) {
@@ -108,6 +121,7 @@ contract Reputation is Ownable {
         emit ProfitShared(receiver, reputationCost - ownerShare);
     }
 
+
     function getMaxReputation(address nftContractAddress, uint tokenId) internal view returns (int) {
         if (nftContractAddress != address(0)) {
             ERC721 nftContract = ERC721(nftContractAddress);
@@ -122,17 +136,17 @@ contract Reputation is Ownable {
         return reputationData[sender][receiver];
     }
 
-    // Input in wei
-    function withdrawFunds(uint amountInWei) public onlyOwner {
-        require(amountInWei <= ownerBalance, "Not enough balance in owner's share");
-            
-        // Make state change before external call
-        ownerBalance -= amountInWei;
 
-        // External call
-        payable(owner()).transfer(amountInWei);
-            
-        emit FundsWithdrawn(owner(), amountInWei);
+    function withdrawOwnerProfits() public onlyOwner {
+        uint profit = ownerBalance;
+        require(profit > 0, "No profits available for withdrawal");
+
+        ownerBalance = 0;
+
+        (bool success, ) = msg.sender.call{value: profit}("");
+        require(success, "Transfer failed");
+
+        emit ProfitsWithdrawn(msg.sender, profit);
     }
 
 
