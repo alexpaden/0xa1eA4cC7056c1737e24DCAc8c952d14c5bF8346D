@@ -16,7 +16,7 @@ error ERSV2__BALANCE_WITHDRAWAL_FAILED();
 contract ReputationServiceMachine is Ownable {
     struct ReputationData {
         uint128 packedReputationAndTimestamp; // Both reputation and timestamp are packed into a single 256-bit slot
-        string comment;
+        bytes32 commentHash;
     }
 
     mapping(address => mapping(address => ReputationData)) public reputationData; // nested mapping
@@ -107,6 +107,7 @@ contract ReputationServiceMachine is Ownable {
             reputation = -currentMaxReputation;
         }
 
+        bytes32 commentHash = sha256(abi.encodePacked(comment));
         balances[msg.sender] -= reputationPrice;
 
         // net receiver revenue calculation
@@ -124,9 +125,8 @@ contract ReputationServiceMachine is Ownable {
         // Pack the reputation and timestamp together into the 128-bit field
         uint128 packedReputationAndTimestamp = uint128(uint256(reputation)) << 64 | uint64(block.timestamp);
 
-
-        // Set the new packed reputation and timestamp data
-        reputationData[msg.sender][receiver] = ReputationData(packedReputationAndTimestamp, comment);
+        // Set the new packed reputation and timestamp data along with the comment hash
+        reputationData[msg.sender][receiver] = ReputationData(packedReputationAndTimestamp, commentHash);
 
         totalReputation[receiver] += reputation;
 
@@ -134,14 +134,21 @@ contract ReputationServiceMachine is Ownable {
     }
 
 
-    // Retrieve the value and comment for a reputation between the sender and receiver addresses
-    function getReputationData(address sender, address receiver) public view returns (int reputation, uint timestamp, string memory comment) {
+    function getReputationData(address sender, address receiver) public view returns (int reputation, uint timestamp, bytes32 commentHash) {
         ReputationData storage data = reputationData[sender][receiver];
         int packedReputation = int64(uint64(data.packedReputationAndTimestamp >> 64));
         uint packedTimestamp = uint64(data.packedReputationAndTimestamp);
-        return (packedReputation, packedTimestamp, data.comment);
+        return (packedReputation, packedTimestamp, data.commentHash);
     }
 
+
+    function isCommentMatchHash(address sender, address receiver, string memory comment) public view returns (bool) {
+        ReputationData storage data = reputationData[sender][receiver];
+        bytes32 storedHash = data.commentHash;
+        bytes32 computedHash = sha256(abi.encodePacked(comment));
+
+        return storedHash == computedHash;
+    }
 
 
     function withdrawBalance() public {
