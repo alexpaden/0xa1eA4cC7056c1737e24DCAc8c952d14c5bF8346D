@@ -188,6 +188,10 @@ contract AddressRegistry is Ownable {
             revert ERSID_NOT_EXIST();
         }
 
+        if (!users[rsid].isAssociated[msg.sender] && !users[rsid].isDelegated[msg.sender]) {
+            revert ERSID_NOT_AUTHORIZED();
+        }
+
         uint256 oldRSID = getRSIDOfAddress(msg.sender);
         if (oldRSID != 0 && oldRSID != rsid) {
             for (uint256 i = 0; i < users[oldRSID].addresses.length; i++) {
@@ -221,6 +225,9 @@ contract AddressRegistry is Ownable {
         if (rsidSettings[rsid].delegateAddress != address(0)) {
             revert ERSID_DELEGATED_ADDRESS_ALREADY_EXISTS();
         }
+        if (!users[rsid].isAssociated[delegatedAddress]) {
+            revert ERSID_NOT_AUTHORIZED();
+        }
 
         bool isRSIDOwner = false;
         for (uint i = 0; i < users[rsid].addresses.length; i++) {
@@ -239,6 +246,7 @@ contract AddressRegistry is Ownable {
 
         emit DelegatedAddressAdded(rsid, delegatedAddress);
     }
+
 
     function changeDelegatedAddress(uint256 rsid, address newDelegatedAddress) public {
         if (!rsidSettings[rsid].exists) {
@@ -304,6 +312,10 @@ contract AddressRegistry is Ownable {
     function removeAssociatedAddressFromRSID(uint256 rsid, address associatedAddress) public {
         if (!rsidSettings[rsid].exists) {
             revert ERSID_NOT_EXIST();
+        }
+
+        if (!users[rsid].isAssociated[associatedAddress]) {
+            revert ERSID_NOT_AUTHORIZED();
         }
 
         bool isRSIDOwner = msg.sender == users[rsid].addresses[0] || users[rsid].isDelegated[msg.sender];
