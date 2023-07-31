@@ -14,7 +14,7 @@ contract AddressRegistry is Ownable {
 
     struct User {
         address[] addresses;
-        mapping(address => bool) isAssociated; // Added line
+        mapping(address => bool) isAssociated;
         mapping(address => bool) isDelegated;
         bool exists;
     }
@@ -46,7 +46,6 @@ contract AddressRegistry is Ownable {
     error E_ONLY_CURRENT_DELEGATE_CAN_CHANGE();
     error E_ONLY_ASSOCIATED_CAN_REMOVE_DELEGATE();
 
-
     event RSIDCreated(uint256 rsid, address indexed owner);
     event AddressesUpdated(uint256 rsid, address[] addresses);
     event DelegatedAddressAdded(uint256 rsid, address indexed delegatedAddress);
@@ -56,7 +55,6 @@ contract AddressRegistry is Ownable {
     event MaxRSIDsPerAddressChanged(uint256 newMax);
     event MaxContractsTaggedChanged(uint256 newMax);
     event TaggedContractRemoved(uint256 rsid, address indexed contractAddress);
-
     event Error(string message);
 
     constructor() {
@@ -99,8 +97,8 @@ contract AddressRegistry is Ownable {
         }
 
         bytes32 key = keccak256(abi.encodePacked(rsid));
-        
-        uint256 index = taggedContracts[key].length; // if contractAddress not found, this will be the resulting index
+        uint256 index = taggedContracts[key].length;
+
         for (uint i = 0; i < taggedContracts[key].length; i++) {
             if (taggedContracts[key][i] == contractAddress) {
                 index = i;
@@ -118,7 +116,6 @@ contract AddressRegistry is Ownable {
         emit TaggedContractRemoved(rsid, contractAddress);
     }
 
-
     function getTaggedContracts(uint256 rsid) public view returns (address[] memory) {
         if (!rsidSettings[rsid].exists) {
             revert ERSID_NOT_EXIST();
@@ -126,7 +123,6 @@ contract AddressRegistry is Ownable {
         bytes32 key = keccak256(abi.encodePacked(rsid));
         return taggedContracts[key];
     }
-
 
     function setMaxContractsTagged(uint256 newMax) public onlyOwner {
         maxContractsTagged = newMax;
@@ -149,7 +145,7 @@ contract AddressRegistry is Ownable {
 
         uint256 rsid = _generateRSID();
         users[rsid].addresses.push(msg.sender);
-        users[rsid].isAssociated[msg.sender] = true; // Added line
+        users[rsid].isAssociated[msg.sender] = true;
         rsidOfAddress[msg.sender].push(rsid);
         users[rsid].exists = true;
         rsidSettings[rsid].exists = true;
@@ -207,11 +203,11 @@ contract AddressRegistry is Ownable {
             if (rsidOfAddress[newAddresses[i]].length >= maxRSIDsPerAddress) {
                 revert ERSID_EXCEEDED_MAX_RSIDS();
             }
-            if (users[rsid].isAssociated[newAddresses[i]]) { // Added line
+            if (users[rsid].isAssociated[newAddresses[i]]) {
                 revert ERSID_ALREADY_ASSOCIATED();
             }
             users[rsid].addresses.push(newAddresses[i]);
-            users[rsid].isAssociated[newAddresses[i]] = true; // Added line
+            users[rsid].isAssociated[newAddresses[i]] = true;
             rsidOfAddress[newAddresses[i]].push(rsid);
         }
 
@@ -244,7 +240,6 @@ contract AddressRegistry is Ownable {
         emit DelegatedAddressAdded(rsid, delegatedAddress);
     }
 
-
     function changeDelegatedAddress(uint256 rsid, address newDelegatedAddress) public {
         if (!rsidSettings[rsid].exists) {
             revert ERSID_NOT_EXIST();
@@ -255,13 +250,11 @@ contract AddressRegistry is Ownable {
         }
 
         users[rsid].isDelegated[rsidSettings[rsid].delegateAddress] = false;
-
         rsidSettings[rsid].delegateAddress = newDelegatedAddress;
         users[rsid].isDelegated[newDelegatedAddress] = true;
 
         emit DelegatedAddressAdded(rsid, newDelegatedAddress);
     }
-
 
     function removeDelegatedAddress(uint256 rsid, address delegatedAddress) public {
         if (!rsidSettings[rsid].exists) {
@@ -281,7 +274,6 @@ contract AddressRegistry is Ownable {
         emit DelegatedAddressRemoved(rsid, delegatedAddress);
     }
 
-    
     function removeSelfFromRSID(uint256 rsid) public {
         if (!rsidSettings[rsid].exists) {
             revert ERSID_NOT_EXIST();
@@ -290,7 +282,6 @@ contract AddressRegistry is Ownable {
             revert ERSID_NOT_AUTHORIZED();
         }
 
-        // Remove address from associated addresses
         for (uint i = 0; i < users[rsid].addresses.length; i++) {
             if (users[rsid].addresses[i] == msg.sender) {
                 users[rsid].addresses[i] = users[rsid].addresses[users[rsid].addresses.length - 1];
@@ -299,7 +290,6 @@ contract AddressRegistry is Ownable {
             }
         }
         
-        // Remove address from the RSID mapping
         for (uint i = 0; i < rsidOfAddress[msg.sender].length; i++) {
             if (rsidOfAddress[msg.sender][i] == rsid) {
                 rsidOfAddress[msg.sender][i] = rsidOfAddress[msg.sender][rsidOfAddress[msg.sender].length - 1];
@@ -348,7 +338,6 @@ contract AddressRegistry is Ownable {
 
         emit AddressesUpdated(rsid, users[rsid].addresses);
     }
-
 
     function setRegistrationFee(uint256 newFee) public onlyOwner {
         registrationFee = newFee;
