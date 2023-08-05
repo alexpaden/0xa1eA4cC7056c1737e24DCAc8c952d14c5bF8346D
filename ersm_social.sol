@@ -35,6 +35,7 @@ contract ReputationServiceMachine is Ownable {
     event MaxReputationSet(int newMaxReputation);
     event BalanceWithdrawn(address indexed receiver, uint amount);
     event OperatorEquitySet(uint newOperatorEquity);
+    event MaxCommentBytesSet(uint newMaxCommentBytes);
     
     
     constructor() {
@@ -68,6 +69,12 @@ contract ReputationServiceMachine is Ownable {
         }
         operatorEquity = _operatorEquity;
         emit OperatorEquitySet(_operatorEquity);
+    }
+
+
+    function setMaxCommentBytes(uint _maxCommentBytes) public onlyOwner {
+        maxCommentBytes = _maxCommentBytes;
+        emit MaxCommentBytesSet(_maxCommentBytes);
     }
 
 
