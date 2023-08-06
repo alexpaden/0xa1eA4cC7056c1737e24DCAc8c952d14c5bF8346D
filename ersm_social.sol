@@ -155,8 +155,28 @@ contract ReputationServiceMachine is Ownable {
             reputation = -currentMaxReputation;
         }
 
-        // More logic for setting reputation, packing data, and updating balances
-        // ...
+        bytes32 commentHash = sha256(abi.encodePacked(comment));
+        balances[msg.sender] -= reputationPrice;
+
+        // net receiver revenue calculation
+        uint reputationPriceScaled = reputationPrice * 100;
+        uint ownerRevenue = (reputationPriceScaled * operatorEquity) / 10000;
+        balances[owner()] += ownerRevenue;
+        balances[receiver] += reputationPrice - ownerRevenue;
+
+        // If the sender has already given a reputation to the receiver, deduct it from the total
+        if (reputationData[msg.sender][receiver].packedReputationAndTimestamp != 0) {
+            int previousReputation = int64(uint64(reputationData[msg.sender][receiver].packedReputationAndTimestamp >> 64));
+            totalReputation[receiver] -= previousReputation;
+        }
+
+        // Pack the reputation and timestamp together into the 128-bit field
+        uint128 packedReputationAndTimestamp = uint128(uint256(reputation)) << 64 | uint64(block.timestamp);
+
+        // Set the new packed reputation and timestamp data along with the comment hash
+        reputationData[msg.sender][receiver] = ReputationData(packedReputationAndTimestamp, commentHash);
+
+        totalReputation[receiver] += reputation;
 
         emit ReputationSet(msg.sender, receiver, reputation, comment, block.timestamp);
     }
