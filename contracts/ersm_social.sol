@@ -4,18 +4,20 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 
-error ERSV2__REPUTATION_MAX_MUST_GREATER_ZERO();
-error ERSV2__OWNER_EQUITY_CANNOT_EXCEED_100();
-error ERSV2__COMMENT_LENGTH_TOO_LONG();
-error ERSV2__NO_BALANCE_AVAILABLE();
-error ERSV2__BALANCE_WITHDRAWAL_FAILED();
-error ERSV2__REPUTATION_NOT_FOUND();
-error ERSV2__TAG_LENGTH_TOO_LONG();
+error ERS_SOCIAL__REPUTATION_MAX_MUST_GREATER_ZERO();
+error ERS_SOCIAL__OWNER_EQUITY_CANNOT_EXCEED_100();
+error ERS_SOCIAL__COMMENT_LENGTH_TOO_LONG();
+error ERS_SOCIAL__INSUFFICIENT_FUNDS();
+error ERS_SOCIAL__PAYMENT_TO_RECEIVER_FAILED();
+error ERS_SOCIAL__REPUTATION_NOT_FOUND();
+error ERS_SOCIAL__TAG_LENGTH_TOO_LONG();
+error ERS_SOCIAL__INSUFFICIENT_REVENUE();
 
 
-contract ReputationServiceMachine is Ownable {
+contract ReputationServiceMachine is Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.AddressSet;
 
     // Mappings to store given and received reputations
@@ -28,22 +30,26 @@ contract ReputationServiceMachine is Ownable {
         bytes32 commentHash;
     }
 
+    struct ReputationBatch {
+        address receiver;
+        int reputation;
+        string tag;
+        string comment;
+    }
 
     mapping(address => mapping(address => ReputationData)) public reputationData; // Nested mapping for reputation data
     mapping(address => int) public totalReputation;
-    mapping(address => uint) public balances; // Balances mapping for storing user balances
-    
 
-    uint public reputationPrice;
+    uint public reputationFee;
     uint public operatorEquity;
+    uint public operatorRevenue;
     uint public maxCommentBytes;
     int public maxReputation;
 
-
     event ReputationSet(address indexed sender, address indexed receiver, int reputation, string tag, string comment, uint timestamp);
-    event ReputationPriceSet(uint newPrice);
+    event ReputationFeeSet(uint newPrice);
     event MaxReputationSet(int newMaxReputation);
-    event BalanceWithdrawn(address indexed receiver, uint amount);
+    event OperatorRevenueWithdrawn(uint amount);
     event OperatorEquitySet(uint newOperatorEquity);
     event MaxCommentBytesSet(uint newMaxCommentBytes);
     event ReputationDeleted(address indexed sender, address indexed receiver); // Event for deleting reputation
@@ -51,8 +57,9 @@ contract ReputationServiceMachine is Ownable {
     
     // Constructor to initialize contract with default values
     constructor() {
-        reputationPrice = 0.0 ether;
+        reputationFee = 0.01 ether;
         operatorEquity = 100;
+        operatorRevenue = 0;
         maxCommentBytes = 320;
         maxReputation = 2;
 
@@ -62,15 +69,15 @@ contract ReputationServiceMachine is Ownable {
 
 
     // Function to set the price of reputation
-    function setReputationPrice(uint _reputationPrice) public onlyOwner {
-        reputationPrice = _reputationPrice;
-        emit ReputationPriceSet(_reputationPrice);
+    function setReputationFee(uint _reputationFee) public onlyOwner {
+        reputationFee = _reputationFee;
+        emit ReputationFeeSet(_reputationFee);
     }
 
     // Function to set the maximum reputation value
     function setMaxReputation(int _maxReputation) public onlyOwner {
         if (_maxReputation <= 0) {
-            revert ERSV2__REPUTATION_MAX_MUST_GREATER_ZERO();
+            revert ERS_SOCIAL__REPUTATION_MAX_MUST_GREATER_ZERO();
         }
         maxReputation = _maxReputation;
         emit MaxReputationSet(_maxReputation);
@@ -80,7 +87,7 @@ contract ReputationServiceMachine is Ownable {
     // Function to set the operator's equity
     function setOperatorEquity(uint _operatorEquity) public onlyOwner {
         if (_operatorEquity > 100) {
-            revert ERSV2__OWNER_EQUITY_CANNOT_EXCEED_100();
+            revert ERS_SOCIAL__OWNER_EQUITY_CANNOT_EXCEED_100();
         }
         operatorEquity = _operatorEquity;
         emit OperatorEquitySet(_operatorEquity);
@@ -94,79 +101,53 @@ contract ReputationServiceMachine is Ownable {
     }
 
 
-    // Fallback function to deposit
-    fallback() external payable {
-        _depositInternal(msg.sender, msg.value);
-    }
-
-
-    // Receive function to deposit
-    receive() external payable {
-        _depositInternal(msg.sender, msg.value);
-    }
-
-
-    // Function to deposit ether
-    function deposit() external payable {
-        _depositInternal(msg.sender, msg.value);
-    }
-
-
-    // Internal function to handle deposit
-    function _depositInternal(address _caller, uint _value) internal {
-        balances[_caller] += _value;
-    }
-
-
-    // Function to set reputation
-    function setReputationBalance(address receiver, int reputation, string memory tag, string memory comment) public {
-        setReputationInternal(receiver, reputation, comment, tag, maxReputation);
-
-        // Update the given and received reputation sets
-        givenReputation[msg.sender].add(receiver);
-        receivedReputation[receiver].add(msg.sender);
-    }
-
-    // Function to set reputation
-    function setReputation(address receiver, int reputation, string memory tag, string memory comment) public payable {
-        // Deposit the sent value to the sender's balance
-        _depositInternal(msg.sender, msg.value);
+    // Function to set single reputation
+    function setReputation(address receiver, int reputation, string memory tag, string memory comment) public payable nonReentrant {
+        if (msg.value < reputationFee) {
+            revert ERS_SOCIAL__INSUFFICIENT_FUNDS();
+        }
 
         // Call the internal function to set the reputation
-        setReputationInternal(receiver, reputation, comment, tag, maxReputation);
+        setReputationInternal(receiver, reputation, tag, comment, maxReputation);
 
-        // Update the given and received reputation sets
-        givenReputation[msg.sender].add(receiver);
-        receivedReputation[receiver].add(msg.sender);
+        // Refund any excess funds sent
+        if (msg.value > reputationFee) {
+            payable(msg.sender).transfer(msg.value - reputationFee);
+        }
     }
 
-
-    // Function to delete reputation
-    function deleteReputation(address receiver) public {
-        if (reputationData[msg.sender][receiver].packedReputationAndTimestamp == 0) {
-            revert ERSV2__REPUTATION_NOT_FOUND();
+    // Function to set reputation in batch
+    function setReputationBatch(ReputationBatch[] memory reputations) public payable nonReentrant {
+        uint totalBatchPrice = reputationFee * reputations.length;
+        if (msg.value < totalBatchPrice) {
+            revert ERS_SOCIAL__INSUFFICIENT_FUNDS();
         }
 
-        ReputationData storage data = reputationData[msg.sender][receiver];
-        int packedReputation = int64(uint64(data.packedReputationAndTimestamp >> 64));
+        for (uint i = 0; i < reputations.length; i++) {
+            // Call the internal function to set the reputation for each batch item
+            setReputationInternal(
+                reputations[i].receiver,
+                reputations[i].reputation,
+                reputations[i].tag,
+                reputations[i].comment,
+                maxReputation
+            );
+        }
 
-        totalReputation[receiver] -= packedReputation;
-
-        delete reputationData[msg.sender][receiver];
-
-        givenReputation[msg.sender].remove(receiver);
-        receivedReputation[receiver].remove(msg.sender);
-
-        emit ReputationDeleted(msg.sender, receiver);
+        // Refund any excess funds sent
+        if (msg.value > totalBatchPrice) {
+            payable(msg.sender).transfer(msg.value - totalBatchPrice);
+        }
     }
+
 
     // Internal function to handle setting reputation
-    function setReputationInternal(address receiver, int reputation, string memory tag, string memory comment, int currentMaxReputation) internal {
+    function setReputationInternal(address receiver, int reputation, string memory tag, string memory comment, int currentMaxReputation) private {
         if (bytes(tag).length > 32) {
-            revert ERSV2__TAG_LENGTH_TOO_LONG();
+            revert ERS_SOCIAL__TAG_LENGTH_TOO_LONG();
         }
         if (bytes(comment).length > maxCommentBytes) {
-            revert ERSV2__COMMENT_LENGTH_TOO_LONG();
+            revert ERS_SOCIAL__COMMENT_LENGTH_TOO_LONG();
         }
 
         if (reputation > currentMaxReputation) {
@@ -182,13 +163,24 @@ contract ReputationServiceMachine is Ownable {
             }
         }
         bytes32 commentHash = sha256(abi.encodePacked(comment));
-        balances[msg.sender] -= reputationPrice;
 
-        // net receiver revenue calculation
-        uint reputationPriceScaled = reputationPrice * 100;
-        uint ownerRevenue = (reputationPriceScaled * operatorEquity) / 10000;
-        balances[owner()] += ownerRevenue;
-        balances[receiver] += reputationPrice - ownerRevenue;
+        uint contractRevenue;
+        uint receiverRevenue;
+        if (operatorEquity == 100) {
+            contractRevenue = reputationFee; 
+            receiverRevenue = 0; 
+        } else {
+            uint reputationFeeScaled = reputationFee * 100;
+            contractRevenue = (reputationFeeScaled * operatorEquity) / 10000;
+            receiverRevenue = reputationFee - contractRevenue;
+            (bool success, ) = receiver.call{value: receiverRevenue}("");
+            if (!success) {
+                revert ERS_SOCIAL__PAYMENT_TO_RECEIVER_FAILED();
+            }
+        }
+
+
+        operatorRevenue += contractRevenue;
 
         // If the sender has already given a reputation to the receiver, deduct it from the total
         if (reputationData[msg.sender][receiver].packedReputationAndTimestamp != 0) {
@@ -204,7 +196,38 @@ contract ReputationServiceMachine is Ownable {
 
         totalReputation[receiver] += reputation;
 
+        givenReputation[msg.sender].add(receiver);
+        receivedReputation[receiver].add(msg.sender);
+
         emit ReputationSet(msg.sender, receiver, reputation, tag, comment, block.timestamp);
+    }
+
+
+    // Function to delete reputation
+    function deleteReputation(address receiver) public {
+        if (reputationData[msg.sender][receiver].packedReputationAndTimestamp == 0) {
+            revert ERS_SOCIAL__REPUTATION_NOT_FOUND();
+        }
+
+        ReputationData storage data = reputationData[msg.sender][receiver];
+        int packedReputation = int64(uint64(data.packedReputationAndTimestamp >> 64));
+
+        totalReputation[receiver] -= packedReputation;
+
+        delete reputationData[msg.sender][receiver];
+
+        givenReputation[msg.sender].remove(receiver);
+        receivedReputation[receiver].remove(msg.sender);
+
+        emit ReputationDeleted(msg.sender, receiver);
+    }
+
+
+    // Function to delete reputation in batch
+    function deleteReputationBatch(address[] memory receivers) public {
+        for (uint i = 0; i < receivers.length; i++) {
+            deleteReputation(receivers[i]);
+        }
     }
 
 
@@ -242,22 +265,18 @@ contract ReputationServiceMachine is Ownable {
     }
 
 
-    // Function to withdraw balance
-    function withdrawBalance() public {
-        uint balance = balances[msg.sender];
-
-        if (balance == 0) {
-            revert ERSV2__NO_BALANCE_AVAILABLE();
+    // Function to allow the owner to withdraw a specified amount of operator revenue
+    function withdrawOperatorRevenue(uint amount) public onlyOwner {
+        if (amount == 0 || amount > operatorRevenue) {
+            revert ERS_SOCIAL__INSUFFICIENT_REVENUE();
         }
 
-        balances[msg.sender] = 0;
+        operatorRevenue -= amount; // Reduce the operator revenue by the specified amount
 
-        (bool success, ) = msg.sender.call{value: balance}("");
-        if (!success) {
-            revert ERSV2__BALANCE_WITHDRAWAL_FAILED();
-        }
+        // Transfer the specified amount to the owner
+        payable(owner()).transfer(amount);
 
-        emit BalanceWithdrawn(msg.sender, balance);
+        emit OperatorRevenueWithdrawn(amount);
     }
 
 
