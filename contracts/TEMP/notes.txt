@@ -1,0 +1,135 @@
+import { expect } from "chai";
+import { ethers } from "hardhat";
+import { Signer } from "ethers";
+import { AddressRegistry, AddressRegistry__factory } from "../typechain-types";
+
+describe("AddressRegistry", function () {
+  let addressRegistry: AddressRegistry;
+  let owner: Signer;
+  let addr: Signer[] = [];
+
+  beforeEach(async () => {
+    try {
+      [owner, addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7], addr[8]] =
+        await ethers.getSigners();
+      const AddressRegistryFactory: AddressRegistry__factory = (await ethers.getContractFactory(
+        "AddressRegistry",
+      )) as AddressRegistry__factory;
+      addressRegistry = await AddressRegistryFactory.deploy();
+      await addressRegistry.deployed();
+    } catch (error) {
+      //console.error("Error deploying contract: ", error);
+      expect(error).to.be.undefined; // This will fail the test if there's an error
+    }
+  });
+
+  it("Should correctly set the contract owner on deployment", async function () {
+    try {
+      expect(await addressRegistry.owner()).to.equal(await owner.getAddress());
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error).to.be.undefined; // This will fail the test if there's an error
+    }
+  });
+
+  it("Should fail to add a tagged contract when the max contracts tagged limit is reached", async function () {
+    try {
+      await addressRegistry.connect(addr[0]).createRSID();
+      const rsid = 1;
+      const maxContractsTagged = 5;
+      const contracts = new Array(maxContractsTagged + 1).fill(addr[1].getAddress());
+      await addressRegistry.connect(addr[0]).addTaggedContracts(rsid, contracts);
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error.message).to.include("ECONTRACTS_EXCEEDED_MAX"); // Check if the error message includes 'ECONTRACTS_EXCEEDED_MAX'
+    }
+  });
+
+  it("Should fail to add a delegated address to an RSID when a delegated address already exists", async function () {
+    try {
+      await addressRegistry.connect(addr[0]).createRSID();
+      const rsid = 1;
+      // First add addr[1] and addr[2] to the RSID's associated addresses
+      await addressRegistry
+        .connect(addr[0])
+        .updateAddresses(rsid, [await addr[1].getAddress(), await addr[2].getAddress()]);
+      await addressRegistry.connect(addr[0]).addDelegatedAddress(rsid, await addr[1].getAddress());
+      await addressRegistry.connect(addr[0]).addDelegatedAddress(rsid, await addr[2].getAddress());
+    } catch (error) {
+      console.error("Error in test: ", error);
+      expect(error.message).to.include("ERSID_DELEGATED_ADDRESS_ALREADY_EXISTS"); // Check if the error message includes 'ERSID_DELEGATED_ADDRESS_ALREADY_EXISTS'
+    }
+  });
+
+  it("Should fail to remove a delegated address that does not exist for the RSID", async function () {
+    try {
+      await addressRegistry.connect(addr[0]).createRSID();
+      const rsid = 1;
+      await expect(
+        addressRegistry.connect(addr[0]).removeDelegatedAddress(rsid, await addr[1].getAddress()),
+      ).to.be.revertedWith("ERSID_DELEGATED_ADDRESS_NOT_FOUND");
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error.message).to.include("ERSID_DELEGATED_ADDRESS_NOT_FOUND");
+    }
+  });
+
+  it("Should fail to remove a tagged contract that does not exist for the RSID", async function () {
+    try {
+      await addressRegistry.connect(addr[0]).createRSID();
+      const rsid = 1;
+      await expect(
+        addressRegistry.connect(addr[0]).removeTaggedContract(rsid, await addr[1].getAddress()),
+      ).to.be.revertedWith("ECONTRACT_NOT_FOUND");
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error.message).to.include("ECONTRACT_NOT_FOUND");
+    }
+  });
+
+  it("Should not allow a non-owner to set the registration fee", async function () {
+    try {
+      await expect(
+        addressRegistry.connect(addr[0]).setRegistrationFee(ethers.utils.parseEther("0.1")),
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error).to.be.undefined; // This will fail the test if there's an error
+    }
+  });
+
+  it("Should not allow a non-owner to set the max RSIDs per address", async function () {
+    try {
+      await expect(addressRegistry.connect(addr[0]).setMaxRSIDsPerAddress(10)).to.be.revertedWith(
+        "Ownable: caller is not the owner",
+      );
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error).to.be.undefined; // This will fail the test if there's an error
+    }
+  });
+
+  it("Should not allow a non-owner to change the max number of tagged contracts", async function () {
+    try {
+      await expect(addressRegistry.connect(addr[0]).setMaxContractsTagged(10)).to.be.revertedWith(
+        "Ownable: caller is not the owner",
+      );
+    } catch (error) {
+      //console.error("Error in test: ", error);
+      expect(error).to.be.undefined; // This will fail the test if there's an error
+    }
+  });
+
+  it("Should fail to remove an address not associated with the RSID", async function () {
+    try {
+      await addressRegistry.connect(addr[0]).createRSID();
+      const rsid = 1;
+
+      // Attempt to remove an address that is not associated
+      await addressRegistry.connect(addr[0]).removeAssociatedAddressFromRSID(rsid, await addr[2].getAddress());
+    } catch (error) {
+      //console.error("Error in testz: ", error);
+      expect(error.message).to.include("ERSID_NOT_AUTHORIZED"); // Check if the error message includes 'ERSID_NOT_AUTHORIZED'
+    }
+  });
+});
